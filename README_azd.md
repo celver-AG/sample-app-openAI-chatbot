@@ -10,7 +10,7 @@
 
 This project has [Dev Container support](https://code.visualstudio.com/docs/devcontainers/containers), so it will be be setup automatically if you open it in Github Codespaces or in local VS Code with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
 
-If you're not using one of those options for opening the project, then you'll need to:
+If you're not using one of those options for opening the project, then you'll need to: 
 
 1. Install prerequisites:
 
