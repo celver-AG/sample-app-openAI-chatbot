@@ -51,6 +51,17 @@ class _UiSettings(BaseSettings):
     show_chat_history_button: bool = True
 
 
+class _OpenAISettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="OPENAI_",
+        env_file=DOTENV_PATH,
+        extra="ignore",
+        env_ignore_empty=True
+    )
+
+    key: str
+    model: str
+
 class _ChatHistorySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AZURE_COSMOSDB_",
@@ -101,14 +112,10 @@ class _AzureOpenAISettings(BaseSettings):
         env_ignore_empty=True
     )
     
-    model: str
+    model: Optional[str] = None
     key: Optional[str] = None
     resource: Optional[str] = None
     endpoint: Optional[str] = None
-    temperature: float = 0
-    top_p: float = 0
-    max_tokens: int = 1000
-    stream: bool = True
     stop_sequence: Optional[List[str]] = None
     seed: Optional[int] = None
     choices_count: Optional[conint(ge=1, le=128)] = Field(default=1, serialization_alias="n")
@@ -118,7 +125,6 @@ class _AzureOpenAISettings(BaseSettings):
     logit_bias: Optional[dict] = None
     presence_penalty: Optional[confloat(ge=-2.0, le=2.0)] = 0.0
     frequency_penalty: Optional[confloat(ge=-2.0, le=2.0)] = 0.0
-    system_message: str = "You are an AI assistant that helps people find information."
     preview_api_version: str = MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION
     embedding_endpoint: Optional[str] = None
     embedding_key: Optional[str] = None
@@ -172,7 +178,9 @@ class _AzureOpenAISettings(BaseSettings):
             self.endpoint = f"https://{self.resource}.openai.azure.com"
             return Self
         
-        raise ValidationError("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_RESOURCE is required")
+        else:
+            self.endpoint = None
+            return Self
         
     def extract_embedding_dependency(self) -> Optional[dict]:
         if self.embedding_name:
@@ -760,12 +768,17 @@ class _BaseSettings(BaseSettings):
     datasource_type: Optional[str] = None
     auth_enabled: bool = True
     sanitize_answer: bool = False
-    use_promptflow: bool = False
+    temperature: float = 0
+    top_p: float = 0
+    max_tokens: int = 1000
+    system_message: str = "You are an AI assistant that helps people find information."
+    stream: bool = True
 
 
 class _AppSettings(BaseModel):
     base_settings: _BaseSettings = _BaseSettings()
-    azure_openai: _AzureOpenAISettings = _AzureOpenAISettings()
+    openai: Optional[_OpenAISettings] = _OpenAISettings()
+    azure_openai: Optional[_AzureOpenAISettings] = _AzureOpenAISettings()
     search: _SearchCommonSettings = _SearchCommonSettings()
     ui: Optional[_UiSettings] = _UiSettings()
     
@@ -774,6 +787,16 @@ class _AppSettings(BaseModel):
     datasource: Optional[DatasourcePayloadConstructor] = None
     promptflow: Optional[_PromptflowSettings] = None
 
+    @model_validator(mode="after")
+    def openai_or_azure_openai(self) -> Self:
+        if self.openai.key and self.azure_openai.endpoint:
+            raise ValueError("Both OpenAI and Azure OpenAI settings cannot be configured at the same time.")
+        
+        if not self.openai and not self.azure_openai:
+            raise ValueError("Either OpenAI or Azure OpenAI settings must be configured.")
+        
+        return self
+    
     @model_validator(mode="after")
     def set_promptflow_settings(self) -> Self:
         try:
