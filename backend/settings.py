@@ -62,6 +62,7 @@ class _OpenAISettings(BaseSettings):
     key: str
     model: str
 
+
 class _ChatHistorySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AZURE_COSMOSDB_",
@@ -75,22 +76,6 @@ class _ChatHistorySettings(BaseSettings):
     account_key: Optional[str] = None
     conversations_container: str
     enable_feedback: bool = False
-
-
-class _PromptflowSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="PROMPTFLOW_",
-        env_file=DOTENV_PATH,
-        extra="ignore",
-        env_ignore_empty=True
-    )
-
-    endpoint: str
-    api_key: str
-    response_timeout: float = 30.0
-    request_field_name: str = "query"
-    response_field_name: str = "reply"
-    citations_field_name: str = "documents"
 
 
 class _AzureOpenAIFunction(BaseModel):
@@ -756,8 +741,23 @@ class _MongoDbSettings(BaseSettings, DatasourcePayloadConstructor):
             "type": self._type,
             "parameters": parameters
         }
-        
-        
+
+
+class _DBSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="DB_",
+        env_file=DOTENV_PATH,
+        extra="ignore",
+        env_ignore_empty=True
+    )
+    user: str
+    password: str
+    host: str
+    port: int
+    name: str
+    top_k: int
+
+
 class _BaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=DOTENV_PATH,
@@ -785,8 +785,18 @@ class _AppSettings(BaseModel):
     # Constructed properties
     chat_history: Optional[_ChatHistorySettings] = None
     datasource: Optional[DatasourcePayloadConstructor] = None
-    promptflow: Optional[_PromptflowSettings] = None
+    db: Optional[_DBSettings] = None
 
+    @model_validator(mode="after")
+    def set_db_settings(self) -> Self:
+        try:
+            self.db = _DBSettings()
+        
+        except ValidationError:
+            self.db = None
+        
+        return self
+    
     @model_validator(mode="after")
     def openai_or_azure_openai(self) -> Self:
         if self.openai.key and self.azure_openai.endpoint:
@@ -795,16 +805,6 @@ class _AppSettings(BaseModel):
         if not self.openai and not self.azure_openai:
             raise ValueError("Either OpenAI or Azure OpenAI settings must be configured.")
         
-        return self
-    
-    @model_validator(mode="after")
-    def set_promptflow_settings(self) -> Self:
-        try:
-            self.promptflow = _PromptflowSettings()
-            
-        except ValidationError:
-            self.promptflow = None
-            
         return self
     
     @model_validator(mode="after")
