@@ -20,6 +20,10 @@ from quart import (
 from openai import AsyncOpenAI
 from langchain_openai import OpenAI, ChatOpenAI, AzureChatOpenAI, AzureOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_community.utilities.sql_database import SQLDatabase
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers.list import CommaSeparatedListOutputParser
+from langchain_experimental.sql.base import SQLDatabaseChain, SQLDatabaseSequentialChain
 
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.security.ms_defender_utils import get_msdefender_user_json
@@ -53,7 +57,70 @@ def create_app():
             logging.exception("Failed to initialize CosmosDB client")
             app.cosmos_conversation_client = None
             raise e
-    
+        try:
+            app.sql_db = None
+            app.sql_chain = None
+            if app_settings.db:
+                conn_str = f"postgresql://{app_settings.db.user}:{app_settings.db.password}@{app_settings.db.host}:{app_settings.db.port}/{app_settings.db.name}"            
+                db = SQLDatabase.from_uri(conn_str)
+                if app_settings.azure_openai.endpoint or app_settings.azure_openai.resource:
+                    llm = AzureOpenAI(
+                        openai_api_base=app_settings.azure_openai.endpoint,
+                        openai_api_version=MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION,
+                        openai_api_key=app_settings.azure_openai.key,
+                        deployment_name=app_settings.azure_openai.model,
+                        temperature=app_settings.base_settings.temperature,
+                        max_tokens=app_settings.base_settings.max_tokens,
+                        streaming=app_settings.base_settings.stream,
+                    )
+                elif app_settings.openai.key:
+                    llm = OpenAI(
+                        model=app_settings.openai.model,
+                        openai_api_key=app_settings.openai.key,
+                        temperature=app_settings.base_settings.temperature,
+                        max_tokens=app_settings.base_settings.max_tokens,
+                        streaming=app_settings.base_settings.stream,
+                    )
+                else:
+                    raise ValueError("Neither OPENAI nor AZURE_OPENAI settings are provided. Please set one.")           
+                query_prompt = PromptTemplate(
+                    input_variables=["dialect", "top_k", "table_info", "input"], 
+                    template="""
+                    Given an input question, first create a syntactically correct {dialect} query to run, then look at the results of the 
+                    query and return the answer. Unless the user specifies in his question a specific number of examples he wishes to obtain, 
+                    always limit your query to at most {top_k} results. You can order the results by a relevant column to return the most 
+                    interesting examples in the database.\n\nNever query for all the columns from a specific table, only ask for a the few
+                    relevant columns given the question.\n\nPay attention to use only the column names that you can see in the schema description. 
+                    Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.\n\nUse the 
+                    following format:\n\nQuestion: Question here\nSQLQuery: SQL Query to run\nSQLResult: Result of the SQLQuery\nAnswer: 
+                    Final answer here\n\nOnly use the following tables:\n{table_info}\n\nQuestion: {input}
+                    """
+                    )
+                decider_prompt = PromptTemplate(
+                    input_variables=["query", "table_names"],
+                    output_parser=CommaSeparatedListOutputParser(), 
+                    template="""
+                    Given the below input question and list of potential tables, output a comma separated list of the table names that may be 
+                    necessary to answer this question.\n\nQuestion: {query}\n\nTable Names: {table_names}\n\nRelevant Table Names:
+                    """
+                    )
+                
+                chain = SQLDatabaseSequentialChain.from_llm(
+                    llm=llm,
+                    db=db,
+                    verbose=True,
+                    query_prompt=query_prompt,
+                    decider_prompt=decider_prompt,
+                    top_k=app_settings.db.top_k,
+                )
+                app.sql_db = db
+                app.sql_chain = chain
+                logging.info("SQLDatabase and SQLDatabaseSequentialChain initialized successfully")
+            else:
+                logging.info("SQLDatabase not configured")
+        except Exception as e:
+            logging.exception("Failed to initialize SQL Database client")
+            raise e
     return app
 
 
@@ -115,6 +182,8 @@ azure_openai_available_tools = []
 # Initialize (Azure) OpenAI Client
 async def init_openai_client():
     try:
+        if app.sql_chain:
+            return app.sql_chain
         if app_settings.openai.key:
             if app_settings.azure_openai.endpoint or app_settings.azure_openai.resource:
                 raise ValueError(
@@ -382,13 +451,14 @@ async def process_function_call_stream(completionChunk, function_call_stream_sta
 async def stream_chat_request(request_body):
     messages = prepare_messages(request_body)
     openai_client = await init_openai_client()
+    output_key = openai_client.output_key
     
     async def generate():
         async for chunk in openai_client.astream(messages):
             yield {
                 "choices": [{"messages": [{
                     "role": "assistant",
-                    "content": chunk.content,
+                    "content": chunk[output_key],
                     }]}],
                 }
 
