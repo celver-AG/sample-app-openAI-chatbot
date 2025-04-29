@@ -59,8 +59,8 @@ class _OpenAISettings(BaseSettings):
         env_ignore_empty=True
     )
 
-    key: str
-    model: str
+    key: Optional[str] = None
+    model: Optional[str] = None
 
 
 class _ChatHistorySettings(BaseSettings):
