@@ -18,6 +18,7 @@
           "-p 50505"
       ],
       "console": "integratedTerminal",
+      "python": "/home/timknudsen/anaconda3/envs/chat-with-sql/bin/python",
       "justMyCode": false
     },
     {
