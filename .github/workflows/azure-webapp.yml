@@ -11,36 +11,45 @@ env:
   AZURE_WEBAPP_NAME: 'clvr-gpt4-chatbot'
   AZURE_WEBAPP_PACKAGE_PATH: '.'
 jobs:
-  create-env-file:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_PORT: ${{ secrets.DB_PORT }}
+      AZURE_OPENAI_MODEL: ${{ vars.AZURE_OPENAI_MODEL }}
+      AZURE_OPENAI_PREVIEW_API_VERSION: ${{ vars.AZURE_OPENAI_PREVIEW_API_VERSION }}
+      DB_TOP_K: ${{ vars.DB_TOP_K }}
+      MAX_TOKENS: ${{ vars.MAX_TOKENS }}
+      STREAM: ${{ vars.STREAM }}
+      SYSTEM_MESSAGE: ${{ vars.SYSTEM_MESSAGE }}
+      TEMPERATURE: ${{ vars.TEMPERATURE }}
+      TOP_P: ${{ vars.TOP_P }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
     - name: Create .env file
       run: |
-        echo "AZURE_OPENAI_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> .env
-        echo "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}" >> .env
-        echo "DB_HOST=${{ secrets.DB_HOST }}" >> .env
-        echo "DB_USER=${{ secrets.DB_USER }}" >> .env
-        echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-        echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
-        echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env
-        echo "AZURE_OPENAI_MODEL=${{ vars.AZURE_OPENAI_MODEL }}" >> .env
-        echo "AZURE_OPENAI_PREVIEW_API_VERSION=${{ vars.AZURE_OPENAI_PREVIEW_API_VERSION }}" >> .env
-        echo "DB_TOP_K=${{ vars.DB_TOP_K }} >> .env"
-        echo "MAX_TOKENS=${{ vars.MAX_TOKENS }} >> .env"
-        echo "STREAM=${{ vars.STREAM }} >> .env"
-        echo "SYSTEM_MESSAGE=${{ vars.SYSTEM_MESSAGE }} >> .env"
-        echo "TEMPERATURE=${{ vars.TEMPERATURE }} >> .env"
-        echo "TOP_P=${{ vars.TOP_P }} >> .env"
-
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+        echo "AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}" >> .env
+        echo "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}" >> .env
+        echo "DB_HOST=${DB_HOST}" >> .env
+        echo "DB_USER=${DB_USER}" >> .env
+        echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
+        echo "DB_NAME=${DB_NAME}" >> .env
+        echo "DB_PORT=${DB_PORT}" >> .env
+        echo "AZURE_OPENAI_MODEL=${AZURE_OPENAI_MODEL}" >> .env
+        echo "AZURE_OPENAI_PREVIEW_API_VERSION=${AZURE_OPENAI_PREVIEW_API_VERSION}" >> .env
+        echo "DB_TOP_K=${DB_TOP_K}" >> .env
+        echo "MAX_TOKENS=${MAX_TOKENS}" >> .env
+        echo "STREAM=${STREAM}" >> .env
+        echo "SYSTEM_MESSAGE=${SYSTEM_MESSAGE}" >> .env
+        echo "TEMPERATURE=${TEMPERATURE}" >> .env
+        echo "TOP_P=${TOP_P}" >> .env
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -60,8 +69,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Building web app
-      uses: azure/appservice-build@v2
+    - name: Install and build frontend
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+
+    - name: Package app
+      run: |
+        cp -r frontend/build/* .
+        zip -r app.zip . -x "frontend/*"
 
     - name: Deploy to Azure App Service
       uses: azure/webapps-deploy@v3
