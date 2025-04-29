@@ -6,7 +6,7 @@ on:
   workflow_dispatch:  # Allows manual triggering
 
 env:
-  NODE_VERSION: '17.x'
+  NODE_VERSION: '18.x'
   PYTHON_VERSION: '3.11'
   AZURE_WEBAPP_NAME: 'clvr-gpt4-chatbot'
   AZURE_WEBAPP_PACKAGE_PATH: '.'
