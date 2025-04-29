@@ -77,8 +77,7 @@ jobs:
 
     - name: Package app
       run: |
-        cp -r frontend/build/* .
-        zip -r app.zip . -x "frontend/*"
+        zip -r app.zip ./*"
 
     - name: Deploy to Azure App Service
       uses: azure/webapps-deploy@v3
