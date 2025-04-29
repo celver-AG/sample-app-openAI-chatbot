@@ -17,7 +17,6 @@ from quart import (
     current_app,
 )
 
-from openai import AsyncOpenAI
 from langchain_openai import OpenAI, ChatOpenAI, AzureChatOpenAI, AzureOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_community.utilities.sql_database import SQLDatabase
@@ -26,6 +25,10 @@ from langchain_core.output_parsers.list import CommaSeparatedListOutputParser
 from langchain_experimental.sql.base import SQLDatabaseChain, SQLDatabaseSequentialChain
 
 from backend.auth.auth_utils import get_authenticated_user_details
+from azure.identity.aio import (
+    DefaultAzureCredential,
+    get_bearer_token_provider,
+)
 from backend.security.ms_defender_utils import get_msdefender_user_json
 from backend.history.cosmosdbservice import CosmosConversationClient
 from backend.settings import (
@@ -61,17 +64,45 @@ def create_app():
             app.sql_db = None
             app.sql_chain = None
             if app_settings.db:
-                conn_str = f"postgresql://{app_settings.db.user}:{app_settings.db.password}@{app_settings.db.host}:{app_settings.db.port}/{app_settings.db.name}"            
-                db = SQLDatabase.from_uri(conn_str)
+                # conn_str = f"sqlserver://{app_settings.db.user}:{app_settings.db.password}@{app_settings.db.host}:{app_settings.db.port}/{app_settings.db.name}"            
+                conn_str = (
+                    "mssql+pyodbc://"
+                    f"{app_settings.db.user}:{app_settings.db.password}@{app_settings.db.host}:{app_settings.db.port}/{app_settings.db.name}"
+                    "?driver=ODBC+Driver+18+for+SQL+Server"
+                    "&Encrypt=yes"
+                    "&TrustServerCertificate=no"
+                )
+                db = SQLDatabase.from_uri(conn_str, schema="SalesLT")
                 if app_settings.azure_openai.endpoint or app_settings.azure_openai.resource:
+                    endpoint = (
+                        app_settings.azure_openai.endpoint
+                        if app_settings.azure_openai.endpoint
+                        else f"https://{app_settings.azure_openai.resource}.openai.azure.com/"
+                    )
+                    aoai_api_key = app_settings.azure_openai.key
+                    ad_token_provider = None
+                    # if not aoai_api_key:
+                    #     logging.debug("No Azure_OPENAI_KEY found, using Azure Entra ID auth")
+                    #     async with DefaultAzureCredential() as credential:
+                    #         ad_token_provider = get_bearer_token_provider(
+                    #             credential=credential, 
+                    #             "https://cognitiveservices.azure.com/.default"
+                    #     )
+                            
+                    deployment = app_settings.azure_openai.model
+                    if not deployment:
+                        raise ValueError("AZURE_OPENAI_MODEL is required")
+                    
+                    default_headers = {"x-ms-useragent": USER_AGENT}
                     llm = AzureOpenAI(
-                        openai_api_base=app_settings.azure_openai.endpoint,
-                        openai_api_version=MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION,
-                        openai_api_key=app_settings.azure_openai.key,
-                        deployment_name=app_settings.azure_openai.model,
-                        temperature=app_settings.base_settings.temperature,
-                        max_tokens=app_settings.base_settings.max_tokens,
-                        streaming=app_settings.base_settings.stream,
+                        deployment_name=deployment,
+                        model_name=deployment,
+                        api_version=app_settings.azure_openai.preview_api_version,
+                        api_key=aoai_api_key,
+                        azure_ad_token_provider=ad_token_provider,
+                        default_headers=default_headers,
+                        azure_endpoint=endpoint,
+                        verbose=True,
                     )
                 elif app_settings.openai.key:
                     llm = OpenAI(
