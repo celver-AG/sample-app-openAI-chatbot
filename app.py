@@ -235,7 +235,8 @@ async def init_openai_client():
             if not deployment:
                 raise ValueError("AZURE_OPENAI_MODEL is required")
             return AzureChatOpenAI(
-                openai_api_base=app_settings.azure_openai.endpoint,
+                azure_endpoint=app_settings.azure_openai.endpoint,
+                # openai_api_base=app_settings.azure_openai.endpoint,
                 openai_api_version=MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION,
                 openai_api_key=app_settings.azure_openai.key,
                 deployment_name=deployment,
