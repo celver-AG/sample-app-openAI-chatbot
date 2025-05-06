@@ -72,7 +72,7 @@ def create_app():
                     "&Encrypt=yes"
                     "&TrustServerCertificate=no"
                 )
-                db = SQLDatabase.from_uri(conn_str, schema="SalesLT")
+                db = SQLDatabase.from_uri(conn_str, schema="dbo")
                 if app_settings.azure_openai.endpoint or app_settings.azure_openai.resource:
                     endpoint = (
                         app_settings.azure_openai.endpoint
@@ -117,7 +117,7 @@ def create_app():
                 query_prompt = PromptTemplate(
                     input_variables=["dialect", "top_k", "table_info", "input"], 
                     template="""
-                    Given an input question, first create a syntactically correct {dialect} query to run, then look at the results of the 
+                    Given an input question, first create a syntactically correct Microsoft SQL {dialect} query to run, then look at the results of the 
                     query and return the answer. Unless the user specifies in his question a specific number of examples he wishes to obtain, 
                     always limit your query to at most {top_k} results. You can order the results by a relevant column to return the most 
                     interesting examples in the database.\n\nNever query for all the columns from a specific table, only ask for a the few
